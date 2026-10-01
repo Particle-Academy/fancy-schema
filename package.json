@@ -1,0 +1,33 @@
+{
+  "name": "@particle-academy/fancy-schema",
+  "version": "0.1.0",
+  "description": "Zero-dependency JSON Schema Draft 2020-12 validator. $ref, oneOf, if/then, additionalProperties — with errors that name the document and the failing path.",
+  "repository": { "type": "git", "url": "git+https://github.com/Particle-Academy/fancy-schema.git" },
+  "homepage": "https://github.com/Particle-Academy/fancy-schema#readme",
+  "bugs": "https://github.com/Particle-Academy/fancy-schema/issues",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
+      "require": { "types": "./dist/index.d.cts", "default": "./dist/index.cjs" }
+    },
+    "./package.json": "./package.json"
+  },
+  "files": ["dist", "docs", "README.md", "LICENSE"],
+  "sideEffects": false,
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "lint": "tsc --noEmit",
+    "test": "node --import tsx --test test/*.test.ts",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run test && npm run lint && npm run build"
+  },
+  "keywords": ["json-schema", "validator", "draft-2020-12", "zero-dependency", "fancy", "particle-academy"],
+  "devDependencies": { "tsup": "^8.5.0", "tsx": "^4.19.0", "typescript": "^5.8.0" }
+}
