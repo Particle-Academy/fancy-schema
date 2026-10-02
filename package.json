@@ -17,7 +17,7 @@
     },
     "./package.json": "./package.json"
   },
-  "files": ["dist", "docs", "README.md", "LICENSE"],
+  "files": ["dist", "README.md", "LICENSE", "CHANGELOG.md"],
   "sideEffects": false,
   "engines": { "node": ">=22" },
   "scripts": {
