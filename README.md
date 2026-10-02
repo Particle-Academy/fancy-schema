@@ -8,6 +8,36 @@ document* and *which field* — not just a verdict.
 npm install @particle-academy/fancy-schema
 ```
 
+> **Installing from a git tag?** The scoped npm name is not published yet, so the
+> supported route today is the tag:
+>
+> ```bash
+> npm install github:Particle-Academy/fancy-schema#v0.2.1
+> ```
+>
+> **Two things to know about that route, both npm's behaviour rather than this
+> package's.**
+>
+> `dist/` is gitignored, so the build has to run on install — it does, via
+> `prepare`, which npm runs for a git install (it does **not** run
+> `prepublishOnly`). Nothing to do; noted because v0.2.0 lacked it and imported
+> as `ERR_MODULE_NOT_FOUND`.
+>
+> **Your CI may fail where your machine succeeds.** npm records a `github:`
+> dependency in the lockfile as `git+ssh://git@github.com/...` — **even when you
+> wrote `git+https://`**, which it normalises away. A GitHub Actions runner has no
+> SSH key for github.com, so `npm ci` can fail on a *public* repo for want of a
+> key it never needed. Rewrite the URL before installing:
+>
+> ```bash
+> git config --global url."https://github.com/".insteadOf ssh://git@github.com/
+> ```
+>
+> Reported by the Prism team, who tested both spellings and measured the
+> normalisation. It is the purest example of a shape worth naming: **the
+> dependency resolves for whoever has the key, and the lockfile records their
+> path as though it were everyone's.**
+
 ```ts
 import { compile } from "@particle-academy/fancy-schema";
 
