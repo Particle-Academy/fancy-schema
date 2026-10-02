@@ -11,6 +11,24 @@ upgrading.
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-02
+
+### Fixed
+
+- **A git install produced a package that could not be imported.** `main` and
+  `exports` point into `dist/`, which is correctly gitignored, and the build ran
+  only from `prepublishOnly`. **npm runs `prepare` for a git/GitHub install, not
+  `prepublishOnly`** -- so `npm install github:Particle-Academy/fancy-schema#v0.2.0`
+  succeeded and the subsequent import failed with ERR_MODULE_NOT_FOUND.
+
+  That is exactly the path consumers were told to use while the scoped npm name
+  waits on its bootstrap, so the package was correct for the registry and broken
+  for the only install anyone could actually perform. Reported by Prism, verified
+  against the tag: zero files under `dist/` at v0.2.0.
+
+  `prepare` now runs the build. It fires on a git install AND before publish, so
+  it covers both paths.
+
 ## [0.2.0] - 2026-10-02
 
 ### Added
