@@ -1,6 +1,6 @@
 {
   "name": "@particle-academy/fancy-schema",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Zero-dependency JSON Schema Draft 2020-12 validator. $ref, oneOf, if/then, additionalProperties — with errors that name the document and the failing path.",
   "repository": { "type": "git", "url": "git+https://github.com/Particle-Academy/fancy-schema.git" },
   "homepage": "https://github.com/Particle-Academy/fancy-schema#readme",

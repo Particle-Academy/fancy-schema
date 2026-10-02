@@ -21,7 +21,11 @@ export interface SchemaObject {
   enum?: unknown[];
   const?: unknown;
   properties?: Record<string, Schema>;
+  patternProperties?: Record<string, Schema>;
+  propertyNames?: Schema;
   required?: string[];
+  minProperties?: number;
+  maxProperties?: number;
   additionalProperties?: Schema;
   items?: Schema;
   minItems?: number;
@@ -127,6 +131,39 @@ function err(ctx: Ctx, instancePath: string, schemaPath: string, keyword: string
 }
 
 /**
+ * Compile a JSON Schema regex — **UNFLAGGED** — returning `null` when the
+ * pattern is not a valid regular expression at all.
+ *
+ * ## Why no `u` flag
+ *
+ * JSON Schema specifies **ECMA-262** regular expressions, and ECMA-262 without
+ * `u` permits an identity escape of any non-syntax character. The `u` flag
+ * forbids exactly that, so it is STRICTER than the language it is supposed to
+ * implement: `\-`, `\p` and `\a` are legal JSON Schema patterns that `new
+ * RegExp(p, "u")` throws a SyntaxError on.
+ *
+ * `pattern` shipped with the flag, so a schema containing any of those crashed
+ * out of `validate()` rather than returning a result — the worst shape this
+ * failure can take, because a crash on a VALID schema looks like a bug in the
+ * caller's own code. Found by Prism, who hit it in a patch they wrote for
+ * `patternProperties` and measured which escapes differ.
+ *
+ * ## Why `null` rather than throwing
+ *
+ * A pattern that no flavour can compile (`(`) is a defect in the SCHEMA, and
+ * the caller is owed that as an error naming the keyword, in the same list as
+ * every other finding. An exception escaping a validator makes the schema
+ * author debug a stack trace to learn they left a bracket open.
+ */
+function compileRegex(pattern: string): RegExp | null {
+  try {
+    return new RegExp(pattern);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Resolve a local `#/...` pointer against the root schema.
  *
  * Returns `undefined` when it does not resolve, and the caller FAILS on that
@@ -210,8 +247,19 @@ function validateNode(schema: Schema, value: unknown, instancePath: string, sche
     if (schema.maxLength !== undefined && len > schema.maxLength) {
       err(ctx, instancePath, `${schemaPath}/maxLength`, "maxLength", `longer than ${schema.maxLength}`, String(len));
     }
-    if (schema.pattern !== undefined && !new RegExp(schema.pattern, "u").test(s)) {
-      err(ctx, instancePath, `${schemaPath}/pattern`, "pattern", `does not match /${schema.pattern}/`);
+    if (schema.pattern !== undefined) {
+      const re = compileRegex(schema.pattern);
+      if (re === null) {
+        err(
+          ctx,
+          instancePath,
+          `${schemaPath}/pattern`,
+          "pattern",
+          `${JSON.stringify(schema.pattern)} is not a valid ECMA-262 regular expression`,
+        );
+      } else if (!re.test(s)) {
+        err(ctx, instancePath, `${schemaPath}/pattern`, "pattern", `does not match /${schema.pattern}/`);
+      }
     }
   }
 
@@ -276,6 +324,52 @@ function validateNode(schema: Schema, value: unknown, instancePath: string, sche
       }
     }
 
+    const objKeys = Object.keys(obj);
+
+    if (schema.minProperties !== undefined && objKeys.length < schema.minProperties) {
+      // `required` cannot express "non-empty" when the keys are open, which is
+      // exactly the shape of a per-language skip map: any of php/ts/py, at
+      // least one. Without this an empty map claimed an exemption and exempted
+      // nothing, and nothing anywhere said so.
+      err(
+        ctx,
+        instancePath,
+        `${schemaPath}/minProperties`,
+        "minProperties",
+        `has ${objKeys.length} propert${objKeys.length === 1 ? "y" : "ies"}, needs at least ${schema.minProperties}`,
+        String(objKeys.length),
+      );
+    }
+
+    if (schema.maxProperties !== undefined && objKeys.length > schema.maxProperties) {
+      err(
+        ctx,
+        instancePath,
+        `${schemaPath}/maxProperties`,
+        "maxProperties",
+        `has ${objKeys.length} properties, allows at most ${schema.maxProperties}`,
+        String(objKeys.length),
+      );
+    }
+
+    if (schema.propertyNames !== undefined) {
+      // Each KEY is validated as a string value, so the whole string vocabulary
+      // works on it — `enum`, `pattern`, `maxLength`. The error is reported at
+      // the key's own pointer: the key is the thing that failed, and an error
+      // on the object's path leaves the caller hunting for which one.
+      ctx.depth++;
+      for (const key of objKeys) {
+        validateNode(
+          schema.propertyNames,
+          key,
+          `${instancePath}/${escapePointer(key)}`,
+          `${schemaPath}/propertyNames`,
+          ctx,
+        );
+      }
+      ctx.depth--;
+    }
+
     if (schema.properties !== undefined) {
       ctx.depth++;
       for (const [key, sub] of Object.entries(schema.properties)) {
@@ -292,10 +386,54 @@ function validateNode(schema: Schema, value: unknown, instancePath: string, sche
       ctx.depth--;
     }
 
+    // Matched keys are collected here because `additionalProperties` below
+    // needs them: "additional" means not described by `properties` OR
+    // `patternProperties`. Leaving the second out is what made a CORRECT
+    // document fail — every legitimate dynamic key read as an intruder.
+    //
+    // This is why ignoring an unimplemented keyword is only safe for
+    // ASSERTIONS. `patternProperties` is also an input to another keyword, so
+    // silence here did not relax the schema, it inverted it.
+    const patternMatched = new Set<string>();
+
+    if (schema.patternProperties !== undefined) {
+      ctx.depth++;
+      for (const [pattern, sub] of Object.entries(schema.patternProperties)) {
+        const re = compileRegex(pattern);
+
+        if (re === null) {
+          // Report it and match NOTHING. Treating an uncompilable pattern as
+          // matching everything would convert a schema defect into a silent
+          // hole in `additionalProperties`.
+          err(
+            ctx,
+            instancePath,
+            `${schemaPath}/patternProperties/${escapePointer(pattern)}`,
+            "patternProperties",
+            `${JSON.stringify(pattern)} is not a valid ECMA-262 regular expression`,
+          );
+          continue;
+        }
+
+        for (const key of objKeys) {
+          if (!re.test(key)) continue;
+          patternMatched.add(key);
+          validateNode(
+            sub,
+            obj[key],
+            `${instancePath}/${escapePointer(key)}`,
+            `${schemaPath}/patternProperties/${escapePointer(pattern)}`,
+            ctx,
+          );
+        }
+      }
+      ctx.depth--;
+    }
+
     if (schema.additionalProperties !== undefined) {
       const known = new Set(Object.keys(schema.properties ?? {}));
-      for (const key of Object.keys(obj)) {
-        if (known.has(key)) continue;
+      for (const key of objKeys) {
+        if (known.has(key) || patternMatched.has(key)) continue;
         if (schema.additionalProperties === false) {
           // Name the property. An unknown-property failure is usually a schema
           // that never learned about a field, and you cannot tell which

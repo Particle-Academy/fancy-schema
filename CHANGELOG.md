@@ -11,6 +11,59 @@ upgrading.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-02
+
+### Added
+
+- **`patternProperties`, `propertyNames`, `minProperties` and `maxProperties`.**
+  Requested by Prism with measured evidence: their `cases.schema.json` uses the
+  first three in six places, and against their 24-document corpus this validator
+  was wrong in **both directions** without them.
+
+  - **It was too LENIENT.** An unimplemented keyword is ignored, so a
+    per-language skip map accepted `{}` and `{"ruby": "..."}` — one claiming an
+    exemption that exempts nothing, the other exempting a language the corpus
+    does not have. `required` cannot express "non-empty" when the keys are open,
+    which is why `minProperties` is the keyword that closes it.
+  - **It was too STRICT.** Ignoring `patternProperties` left dynamic keys
+    unmatched, and `additionalProperties: false` then rejected them — so a
+    CORRECT document failed. That single gap was the whole of their 23/24
+    against a standards validator's 24/24.
+
+  **The lesson, which is worth more than the keywords:** "unknown keywords are
+  ignored" is a sound default only where the keyword would have ADDED a
+  constraint. `patternProperties` is also an INPUT to another keyword, so
+  ignoring it did not relax the schema — it inverted it. A matched key now
+  satisfies `additionalProperties: false`, and a non-matching one is still
+  refused.
+
+  Verified against all seven of Prism's own cases end to end; every one now
+  behaves as their standards validator does.
+
+### Fixed
+
+- **A valid schema could crash the validator.** `pattern` compiled with the
+  `u` flag, and **`u` is stricter than the language JSON Schema specifies.**
+  ECMA-262 without `u` permits an identity escape of any non-syntax character,
+  so `\-`, `\p` and `\a` are legal patterns that `new RegExp(p, "u")` throws a
+  `SyntaxError` on. The throw escaped `validate()` rather than returning a
+  result — the worst shape for this failure, because a crash on a VALID schema
+  reads as a bug in the caller's own code.
+
+  All regexes now compile unflagged. **What you must do: nothing** — unless you
+  were catching a `SyntaxError` around `validate()`, in which case that path is
+  now a normal error in the result.
+
+  Found by Prism while writing a `patternProperties` patch, who measured exactly
+  which escapes differ. It was already live in shipped `pattern`.
+
+- **An uncompilable pattern is now reported, not thrown.** `pattern: "("` is a
+  defect in the *schema*, and the author is owed it as an error naming the
+  keyword alongside every other finding rather than as a stack trace. An
+  uncompilable `patternProperties` key matches **nothing** — treating it as
+  matching everything would turn a schema defect into a silent hole in
+  `additionalProperties`.
+
 ## [0.1.0] - 2026-10-01
 
 ### Added
