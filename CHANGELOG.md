@@ -22,6 +22,7 @@ upgrading.
   when the fancy-labs lab has certified that exact version and commit. Consumers
   do nothing; this changes how releases are cut, not what the package does.
 - **Docs:** `AGENTS.md` added: the guide to using this package (install, how to find it on the Fancy MCP catalog server once it is listed, API essentials, traps), and it ships in the package. `CONTRIBUTING.md` added for the contributor notes, with `CLAUDE.md` as a symlink to it. The README points to the MCP server and to `AGENTS.md`. No code changed; nothing to do.
+- CI: re-pin org third-party allowlist to 2614224
 
 ### Fixed
 
